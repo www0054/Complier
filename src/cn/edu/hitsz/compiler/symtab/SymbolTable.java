@@ -5,7 +5,9 @@ import cn.edu.hitsz.compiler.utils.FileUtils;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedList;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 符号表
@@ -16,6 +18,8 @@ import java.util.Map;
  */
 public class SymbolTable {
 
+    private final LinkedList<SymbolTableEntry> symboltable = new LinkedList<>();
+
     /**
      * 获取符号表中已有的条目
      *
@@ -24,7 +28,12 @@ public class SymbolTable {
      * @throws RuntimeException 该符号在表中不存在
      */
     public SymbolTableEntry get(String text) {
-        throw new NotImplementedException();
+        for(SymbolTableEntry s:symboltable){
+            if(s.getText().equals(text)){
+                return s;
+            }
+        }
+        throw new RuntimeException();
     }
 
     /**
@@ -35,7 +44,12 @@ public class SymbolTable {
      * @throws RuntimeException 该符号已在表中存在
      */
     public SymbolTableEntry add(String text) {
-        throw new NotImplementedException();
+        if(has(text))throw new RuntimeException();
+        else {
+            SymbolTableEntry add_item = new SymbolTableEntry(text);
+            symboltable.add(add_item);
+            return add_item;
+        }
     }
 
     /**
@@ -45,7 +59,12 @@ public class SymbolTable {
      * @return 该符号的条目是否位于符号表中
      */
     public boolean has(String text) {
-        throw new NotImplementedException();
+        for(SymbolTableEntry s:symboltable){
+            if(s.getText().equals(text)){
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -54,7 +73,7 @@ public class SymbolTable {
      * @return 符号表的所有条目
      */
     private Map<String, SymbolTableEntry> getAllEntries() {
-        throw new NotImplementedException();
+        return symboltable.stream().collect(Collectors.toMap(SymbolTableEntry::getText, a -> a,(k1, k2)->k1));
     }
 
     /**
