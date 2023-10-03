@@ -5,6 +5,13 @@
 
 ## 词法分析
 
+#### 词法程序输入文件
+data/in
+
+├── coding_map.csv # 码点文件
+
+└── input_code.txt # 输入的代码
+
 #### 词法程序输出文件
 
 data/out 
