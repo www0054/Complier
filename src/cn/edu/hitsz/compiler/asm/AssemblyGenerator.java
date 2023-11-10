@@ -1,9 +1,16 @@
 package cn.edu.hitsz.compiler.asm;
 
 import cn.edu.hitsz.compiler.NotImplementedException;
+import cn.edu.hitsz.compiler.ir.IRImmediate;
+import cn.edu.hitsz.compiler.ir.IRValue;
+import cn.edu.hitsz.compiler.ir.IRVariable;
 import cn.edu.hitsz.compiler.ir.Instruction;
+import cn.edu.hitsz.compiler.utils.FileUtils;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -22,6 +29,12 @@ import java.util.List;
  */
 public class AssemblyGenerator {
 
+    List<Instruction> IR;
+    Map<IRVariable, Integer> variableTimes = new HashMap<>();
+    BMap<IRVariable, Reg> variableRegBMap = new BMap<>();
+
+    List<String> asmList = new ArrayList<>();
+
     /**
      * 加载前端提供的中间代码
      * <br>
@@ -31,8 +44,7 @@ public class AssemblyGenerator {
      * @param originInstructions 前端提供的中间代码
      */
     public void loadIR(List<Instruction> originInstructions) {
-        // TODO: 读入前端提供的中间代码并生成所需要的信息
-        throw new NotImplementedException();
+        IR = PreProcess(originInstructions);
     }
 
 
@@ -46,8 +58,68 @@ public class AssemblyGenerator {
      * 成前完成建立, 与代码生成的过程相关的信息可自行设计数据结构进行记录并动态维护.
      */
     public void run() {
-        // TODO: 执行寄存器分配与代码生成
-        throw new NotImplementedException();
+        Reg dest, a1, a2;
+        for(Instruction inst: IR){
+            switch (inst.getKind().name()){
+                case "MOV":
+                    if(inst.getFrom() instanceof IRImmediate){
+                        if(variableRegBMap.containsKey(inst.getResult()))dest = variableRegBMap.getByKey(inst.getResult());
+                        else {
+                            dest = RegManage.getFreeReg();
+                            variableRegBMap.add(inst.getResult(), dest);
+                        }
+                        asmList.add(asmInstruction.li(dest, (IRImmediate) inst.getFrom()));
+                    }else {
+                        if(variableRegBMap.containsKey(inst.getResult()))dest = variableRegBMap.getByKey(inst.getResult());
+                        else {
+                            dest = RegManage.getFreeReg();
+                            variableRegBMap.add(inst.getResult(), dest);
+                        }
+                        a1 = variableRegBMap.getByKey((IRVariable) inst.getFrom());
+                        asmList.add(asmInstruction.mv(dest, a1));
+                        freeVariableReg((IRVariable) inst.getFrom());
+                    }
+                    break;
+                case "SUB":
+                    if(variableRegBMap.containsKey(inst.getResult()))dest = variableRegBMap.getByKey(inst.getResult());
+                    else {
+                        dest = RegManage.getFreeReg();
+                        variableRegBMap.add(inst.getResult(), dest);
+                    }
+                    a1 = variableRegBMap.getByKey((IRVariable) inst.getLHS());
+                    a2 = variableRegBMap.getByKey((IRVariable) inst.getRHS());
+                    asmList.add(asmInstruction.sub(dest, a1, a2));
+                    freeVariableReg((IRVariable) inst.getLHS());
+                    freeVariableReg((IRVariable) inst.getRHS());
+                    break;
+                case "MUL":
+                    if(variableRegBMap.containsKey(inst.getResult()))dest = variableRegBMap.getByKey(inst.getResult());
+                    else {
+                        dest = RegManage.getFreeReg();
+                        variableRegBMap.add(inst.getResult(), dest);
+                    }
+                    a1 = variableRegBMap.getByKey((IRVariable) inst.getLHS());
+                    a2 = variableRegBMap.getByKey((IRVariable) inst.getRHS());
+                    asmList.add(asmInstruction.mul(dest, a1, a2));
+                    freeVariableReg((IRVariable) inst.getLHS());
+                    freeVariableReg((IRVariable) inst.getRHS());
+                    break;
+                case "ADD":
+                    if(variableRegBMap.containsKey(inst.getResult()))dest = variableRegBMap.getByKey(inst.getResult());
+                    else {
+                        dest = RegManage.getFreeReg();
+                        variableRegBMap.add(inst.getResult(), dest);
+                    }
+                    a1 = variableRegBMap.getByKey((IRVariable) inst.getLHS());
+                    asmList.add(asmInstruction.addi(dest, a1, (IRImmediate) inst.getRHS()));
+                    freeVariableReg((IRVariable) inst.getLHS());
+                    break;
+                case "RET":
+                    a1 = variableRegBMap.getByKey((IRVariable) inst.getReturnValue());
+                    asmList.add(asmInstruction.mv(RegManage.a0, a1));
+                    break;
+            }
+        }
     }
 
 
@@ -57,8 +129,62 @@ public class AssemblyGenerator {
      * @param path 输出文件路径
      */
     public void dump(String path) {
-        // TODO: 输出汇编代码到文件
-        throw new NotImplementedException();
+        FileUtils.writeLines(path, asmList);
+    }
+
+    private List<Instruction> PreProcess(List<Instruction> list){
+        List<Instruction> IR = new ArrayList<>();
+        for(Instruction inst: list ){
+            if(inst.getKind().name().equals("RET")){
+                IR.add(inst);
+                break;
+            }
+            switch (inst.getKind().name()){
+                case "SUB":
+                    if(inst.getLHS() instanceof IRImmediate){
+                        IRVariable temp = IRVariable.temp();
+                        IR.add(Instruction.createMov(temp, inst.getLHS()));
+                        IR.add(Instruction.createSub(inst.getResult(),temp,inst.getRHS()));
+                    }else IR.add(inst);
+                    for(IRValue iv: IR.get(IR.size()-1).getOperands()){
+                        if(iv instanceof IRVariable) variableTimes.put((IRVariable) iv, variableTimes.getOrDefault((IRVariable)iv, 0)+1);
+                    }
+                    break;
+                case "ADD":
+                    if(inst.getLHS() instanceof IRImmediate){
+                        IR.add(Instruction.createAdd(inst.getResult(), inst.getRHS(), inst.getLHS()));
+                    }else IR.add(inst);
+                    for(IRValue iv: IR.get(IR.size()-1).getOperands()){
+                        if(iv instanceof IRVariable) variableTimes.put((IRVariable) iv, variableTimes.getOrDefault((IRVariable)iv, 0)+1);
+                    }
+                    break;
+                case "MUL":
+                    if(inst.getLHS() instanceof IRImmediate){
+                        IR.add(Instruction.createMul(inst.getResult(), inst.getRHS(), inst.getLHS()));
+                    }else IR.add(inst);
+                    for(IRValue iv: IR.get(IR.size()-1).getOperands()){
+                        if(iv instanceof IRVariable) variableTimes.put((IRVariable) iv, variableTimes.getOrDefault((IRVariable)iv, 0)+1);
+                    }
+                    break;
+                default:
+                    IR.add(inst);
+                    for(IRValue iv: IR.get(IR.size()-1).getOperands()){
+                        if(iv instanceof IRVariable) variableTimes.put((IRVariable) iv, variableTimes.getOrDefault((IRVariable)iv, 0)+1);
+                    }
+                    break;
+            }
+        }
+        return IR;
+    }
+
+    private void freeVariableReg(IRVariable a){
+        variableTimes.put(a, variableTimes.get(a)-1);
+        if(variableTimes.get(a) == 0){
+            Reg tmp = variableRegBMap.getByKey(a);
+            RegManage.freeReg(tmp.getName());
+            variableRegBMap.removeByKey(a);
+            variableRegBMap.removeByValue(tmp);
+        }
     }
 }
 
