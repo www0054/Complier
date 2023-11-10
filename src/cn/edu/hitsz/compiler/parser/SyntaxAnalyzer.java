@@ -2,6 +2,7 @@ package cn.edu.hitsz.compiler.parser;
 
 import cn.edu.hitsz.compiler.NotImplementedException;
 import cn.edu.hitsz.compiler.lexer.Token;
+import cn.edu.hitsz.compiler.parser.table.Action;
 import cn.edu.hitsz.compiler.parser.table.LRTable;
 import cn.edu.hitsz.compiler.parser.table.Production;
 import cn.edu.hitsz.compiler.parser.table.Status;
@@ -23,6 +24,9 @@ import java.util.List;
 public class SyntaxAnalyzer {
     private final SymbolTable symbolTable;
     private final List<ActionObserver> observers = new ArrayList<>();
+
+    private List<Token> tokens = new ArrayList<>();
+    private LRTable table;
 
 
     public SyntaxAnalyzer(SymbolTable symbolTable) {
@@ -79,14 +83,16 @@ public class SyntaxAnalyzer {
         // 你可以自行选择要如何存储词法单元, 譬如使用迭代器, 或是栈, 或是干脆使用一个 list 全存起来
         // 需要注意的是, 在实现驱动程序的过程中, 你会需要面对只读取一个 token 而不能消耗它的情况,
         // 在自行设计的时候请加以考虑此种情况
-        throw new NotImplementedException();
+        for(Token token:tokens){
+            this.tokens.add(token);
+        }
     }
 
     public void loadLRTable(LRTable table) {
         // TODO: 加载 LR 分析表
         // 你可以自行选择要如何使用该表格:
         // 是直接对 LRTable 调用 getAction/getGoto, 抑或是直接将 initStatus 存起来使用
-        throw new NotImplementedException();
+        this.table = table;
     }
 
     public void run() {
@@ -94,6 +100,40 @@ public class SyntaxAnalyzer {
         // 你需要根据上面的输入来实现 LR 语法分析的驱动程序
         // 请分别在遇到 Shift, Reduce, Accept 的时候调用上面的 callWhenInShift, callWhenInReduce, callWhenInAccept
         // 否则用于为实验二打分的产生式输出可能不会正常工作
-        throw new NotImplementedException();
+        int i = 0;
+        boolean flag = true;
+        Production tmp;
+        List<Object> inputStack = new ArrayList<>();
+        List<Status> statuseList = new ArrayList<>();
+        statuseList.add(table.getInit());
+        while(flag){
+            switch (table.getAction(statuseList.get(statuseList.size()-1), tokens.get(i)).getKind()){
+                case Shift:
+                    callWhenInShift(statuseList.get(statuseList.size()-1), tokens.get(i));
+                    statuseList.add(table.getAction(statuseList.get(statuseList.size()-1), tokens.get(i)).getStatus());
+                    inputStack.add(tokens.get(i));
+                    i++;
+                    break;
+                case Reduce:
+                    tmp = table.getAction(statuseList.get(statuseList.size()-1), tokens.get(i)).getProduction();
+                    callWhenInReduce(statuseList.get(statuseList.size()-1),tmp);
+                    for(int j = 0; j < tmp.body().size(); j++){
+                        statuseList.remove(statuseList.size()-1);
+                        inputStack.remove(inputStack.size()-1);
+                    }
+                    inputStack.add(tmp.head());
+                    statuseList.add(table.getGoto(statuseList.get(statuseList.size()-1), tmp.head()));
+                    break;
+                case Accept:
+                    callWhenInAccept(statuseList.get(statuseList.size()-1));
+                    flag = false;
+                    break;
+                case Error:
+                    Action.error();
+                    break;
+                default:
+                    throw new RuntimeException("Action Error");
+            }
+        }
     }
 }
